@@ -1,0 +1,114 @@
+---
+title: "Predictive Analysis"
+output: html_document
+date: "2025-04-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(gpboost)
+library(kernelshap)
+library(shapviz)
+```
+
+### Load dataset
+
+```{r}
+rsv_data <- read.csv("../Data/full data.csv")
+rsv_data <- rsv_data[,-1]
+```
+
+```{r}
+rsv_data2 <- rsv_data_s[,c(5:6,8:22,24:30,32:34)]
+rsv_data2 <- na.omit(rsv_data2)
+rsv_data3 <- matrix(ncol=ncol(rsv_data2)+1,nrow=364*47) %>% as.data.frame()
+```
+
+```{r}
+for (i in 1:47){
+  i_1 <-(364*(i-1)+1)
+  i_2 <- 364*i
+  i_3 <-(365*(i-1)+1)
+  i_4 <- 365*i-1
+  rsv_data3[i_1:i_2,1:24] <- rsv_data2[i_3:i_4,1:24]
+}
+colnames(rsv_data3) <- c("Relative Humidity","Sea Level Air Pressure","Visibility","Wind Speed","Precipitation","Average Temperature",
+                         "Maximum Temperature","Minimum Temperature","Days (2-6 degrees)","Days (24-30 degrees)","Days (>30 degrees)",
+                         "Days (<0 degrees)","Days (>24 degrees)","Days (<6 degrees)","Days (>35 degrees)","Days (<-5 degrees)",
+                         "PM2.5","NO2","SO2","CO","Temperature Range","Last week of Cases","Latitude","Longitude",
+                         "Year","Month","Week","Cases")
+```
+
+```{r}
+for (i in 1:47){
+  i_1 <-(364*(i-1)+1)
+  i_2 <- 364*i
+  i_3 <- (365*(i-1)+2)
+  i_4 <- 365*i
+  rsv_data3$Cases[i_1:i_2] <- rsv_data2$Cases[i_3:i_4]
+  rsv_data3$Year[i_1:i_2] <- rsv_data2$Year[i_3:i_4]
+  rsv_data3$Month[i_1:i_2] <- rsv_data2$Month[i_3:i_4]
+  rsv_data3$Week[i_1:i_2] <- rsv_data2$week[i_3:i_4]
+}
+```
+
+### Split to train and test dataset
+
+```{r}
+set.seed(123)
+training <- rsv_data3[rsv_data3$Year!=2019,-25]
+testing <- rsv_data3[rsv_data3$Year==2019,-25]
+train_sp_data <- training
+test_sp_data <- testing
+test_X <- test_sp_data[,-27] %>% as.matrix()
+test_y <- test_sp_data[,c("Cases")]
+coords_test <- test_sp_data[,c("Latitude","Longitude")] %>% as.matrix()
+train_coords <- train_sp_data[,c("Latitude","Longitude")]
+train_X <- train_sp_data[,-27] %>% as.matrix()
+train_y <- train_sp_data[,c("Cases")]
+```
+
+### Build GPBoost Model
+
+```{r}
+gp_model <- GPModel(gp_coords = train_coords, cov_function = "exponential",
+                    likelihood =  "negative_binomial")
+dtrain <- gpb.Dataset(train_X, label = train_y)
+```
+
+### Model Training (We set defaulted parameters to illustrate)
+
+```{r}
+set.seed(666)
+train_model <- gpb.train(data = dtrain,
+                 gp_model = gp_model,
+                 nrounds=3000,
+                 learning_rate = 0.10, 
+                 num_leaves = (2^3)-1,
+                 max_depth = 10, 
+                 min_data_in_leaf = 16,
+                 verbose=0,
+                 num_threads=10,
+                 train_gp_model_cov_pars = FALSE)
+```
+
+### Model Prediction
+
+```{r}
+pred <- predict(train_model, data = test_X, gp_coords_pred = coords_test,
+                predict_cov_mat =FALSE)
+```
+
+### Visualization
+
+```{r}
+shap.plot.summary.wrap1(train_model, X = test_X,top_n=15) 
+  theme_bw()+
+  theme(panel.border = element_rect(colour = "black", 
+                      size = 1,linetype = "solid"),
+        axis.title = element_text(colour = "black",size = 12,family="sans",face="bold"),
+        axis.text = element_text(colour = "black",size = 12,family="sans",face="bold"),
+        legend.text = element_text(colour = "black",size = 12,family="sans",face="bold"),
+        legend.position = "bottom")
+```
+
