@@ -6,6 +6,11 @@ date: "2025-04-15"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(dlnm)
+library(splines)
+library(sp)
+library(spdep)
+library(sf)
 ```
 
 ## Load Dataset
