@@ -16,12 +16,12 @@ library(sf)
 ## Load dataset
 
 ```{r}
-geo_location <- read.csv("./lon_lat.csv")
+geo_location <- read.csv("../Data/lon_lat.csv")
 colnames(geo_location)[1] <- "NAME_1"
-Japan.shapefile <- st_read('./Japan_shp/JPN_adm1.shp')
+Japan.shapefile <- st_read('../Data/Japan_shp/JPN_adm1.shp')
 Japan.shapefile <- sp::merge(Japan.shapefile,geo_location,by="NAME_1",duplicateGeoms = TRUE)
 Japan.shapefile <- as(Japan.shapefile, "Spatial")
-rsv_data <- read.csv("./full data.csv")
+rsv_data <- read.csv("../Data/full data.csv")
 rsv_data <- rsv_data[,-1]
 rsv_data$tscluster <- factor(rsv_data$tscluster)
 rsv_data$NAME_1 <- factor(rsv_data$NAME_1)
