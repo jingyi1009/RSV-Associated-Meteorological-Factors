@@ -1,0 +1,89 @@
+---
+title: "Sensitivity Analysis"
+output: html_document
+date: "2025-04-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(dlnm)
+library(splines)
+library(sp)
+library(spdep)
+library(sf)
+```
+
+## Load dataset
+
+```{r}
+geo_location <- read.csv("../Data/lon_lat.csv")
+colnames(geo_location)[1] <- "NAME_1"
+Japan.shapefile <- st_read('../Data/Japan_shp/JPN_adm1.shp')
+Japan.shapefile <- sp::merge(Japan.shapefile,geo_location,by="NAME_1",duplicateGeoms = TRUE)
+Japan.shapefile <- as(Japan.shapefile, "Spatial")
+rsv_data <- read.csv("../Data/full data.csv")
+rsv_data <- rsv_data[,-1]
+rsv_data$tscluster <- factor(rsv_data$tscluster)
+rsv_data$NAME_1 <- factor(rsv_data$NAME_1)
+```
+
+## Main (use average temperature as an example to illustrate)
+
+### Covariates 
+
+```{r}
+cb.vis <- crossbasis(rsv_data$visibility,lag=3,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)  
+cb.sp <- crossbasis(rsv_data$sea.level.pressure,lag=3,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)
+```
+
+### Exposure 
+
+```{r}
+cb.tavg.piecewise <- crossbasis(rsv_data$TAVG,lag=3,argvar=list(fun="bs",knots=c(10,20),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+```
+
+### Univariate Model
+
+```{r}
+univariate_tavg_model <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list))+
+                               s(cb.vis)+s(cb.sp), # covariates 
+                     family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+```
+
+## Sensitivity I - Change Covariates (use average temperature as an example to illustrate)
+
+### Remove Visibility
+
+```{r}
+univariate_tavg_model_remove_vis <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list))+s(cb.vis),  
+                                        family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+```
+
+### Remove Sea Level Pressure 
+
+```{r}
+univariate_tavg_model_remove_sp <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list))+s(cb.sp),
+                                        family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+```
+
+## Sensitivity II - Change Lag Periods (use average temperature as an example to illustrate)
+
+### Covariates 
+
+```{r}
+cb.vis.lag4 <- crossbasis(rsv_data$visibility,lag=4,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)  
+cb.sp.lag4 <- crossbasis(rsv_data$sea.level.pressure,lag=4,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)
+```
+
+### Exposure 
+
+```{r}
+cb.tavg.piecewise.lag4 <- crossbasis(rsv_data$TAVG,lag=4,argvar=list(fun="bs",knots=c(10,20),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+```
+
+```{r}
+univariate_tavg_model_lag4 <- gam(Cases~cb.tavg.piecewise.lag4+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list))+
+                                    s(cb.sp.lag4)+s(cb.vis.lag4),
+                                  family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+```
+
