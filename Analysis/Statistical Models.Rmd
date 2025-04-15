@@ -1,0 +1,151 @@
+---
+title: "Statistical Modeling"
+output: html_document
+date: "2025-04-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dlnm)
+library(splines)
+library(sp)
+library(spdep)
+library(sf)
+```
+
+## Load dataset
+
+```{r}
+geo_location <- read.csv("../Data/lon_lat.csv")
+colnames(geo_location)[1] <- "NAME_1"
+Japan.shapefile <- st_read('../Data/Japan_shp/JPN_adm1.shp')
+Japan.shapefile <- sp::merge(Japan.shapefile,geo_location,by="NAME_1",duplicateGeoms = TRUE)
+Japan.shapefile <- as(Japan.shapefile, "Spatial")
+rsv_data <- read.csv("../Data/full data.csv")
+rsv_data <- rsv_data[,-1]
+rsv_data$tscluster <- factor(rsv_data$tscluster)
+rsv_data$NAME_1 <- factor(rsv_data$NAME_1)
+```
+## Construct adjacency matrix
+
+```{r}
+adj_list <- Japan.shapefile %>% st_as_sf() %>% st_touches()
+names(adj_list) <- Japan.shapefile$NAME_1
+```
+
+## Meteorological Model
+
+### Covariates
+
+```{r}
+# covariates
+cb.vis <- crossbasis(rsv_data$visibility,lag=3,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)  
+cb.sp <- crossbasis(rsv_data$sea.level.pressure,lag=3,argvar=list(fun="ps",df=5),arglag=list(fun="ps",degree=5),group=rsv_data$NAME_1)
+```
+
+### Exposures
+
+```{r}
+cb.tavg.piecewise <- crossbasis(rsv_data$TAVG,lag=3,argvar=list(fun="bs",knots=c(10,20),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.rh.piecewise <- crossbasis(rsv_data$relative.humidity,lag=3,argvar=list(fun="bs",knots=c(60,70),degree=1),arglag=list(fun="poly",degree=3),group= rsv_data$NAME_1)
+cb.ws.piecewise <- crossbasis(rsv_data$wind.speed,lag=3,argvar=list(fun="bs",knots=c(20),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)  
+cb.trange <- crossbasis(rsv_data$TRange,lag=3,argvar=list(fun="lin"),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.p <- crossbasis(rsv_data$PRCP,lag=3,argvar=list(fun="poly",degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)  
+cb.hd <- crossbasis(rsv_data$Days.Over.30,lag=3,argvar=list(fun="lin"),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.cd <- crossbasis(rsv_data$Days.Below.0,lag=3,argvar=list(fun="lin"),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+```
+
+### Crude Association (use average temperature as an example to illustrate)
+
+```{r}
+crude_tavg_model <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+ # ts-cluster
+                          s(week,by=Year,k=30)+ # temporal trend
+                          s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list)), # spatial variation
+                     family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.tavg.25 <- crosspred(cb.tavg.piecewise,crude_tavg_model,cen=25,cumul=TRUE,by=1)
+```
+
+### Univariate Association (use average temperature as an example to illustrate)
+
+```{r}
+univariate_tavg_model <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf", k=40,xt=list(nb=adj_list))+
+                               s(cb.vis)+s(cb.sp), # covariates 
+                     family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.tavg.25 <- crosspred(cb.tavg.piecewise,univariate_tavg_model,cen=25,cumul=TRUE,by=1)
+```
+
+### Multivariate Association
+
+```{r}
+multivariate_tavg_model <- gam(Cases~cb.tavg.piecewise+cb.rh.piecewise+cb.ws.piecewise+cb.p+cb.trange+cb.hd+cb.cd+# exposures
+                                 s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf",k=40,xt=list(nb=adj_list))+
+                                 s(cb.vis)+s(cb.sp),
+                     family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.tavg.25 <- crosspred(cb.tavg.piecewise,multivariate_tavg_model,cen=25,cumul=TRUE,by=1)
+```
+
+## Air Pollutant Model
+
+### Remove Extreme Value
+
+```{r}
+pm2.5_q99 <- quantile(rsv_data$PM25,0.99)
+so2_q99 <- quantile(rsv_data$SO2,0.99)
+no2_q99 <- quantile(rsv_data$NO2,0.99)
+nox_q99 <- quantile(rsv_data$NOX,0.99)
+co_q99 <- quantile(rsv_data$CO,0.99)
+rsv_data <- rsv_data[rsv_data$PM25<=pm2.5_q99&rsv_data$SO2<=so2_q99&rsv_data$NO2<=no2_q99&rsv_data$NOX<=nox_q99&rsv_data$CO<=co_q99,]
+```
+
+### Covariates
+
+```{r}
+# covariates
+cb.sp <- crossbasis(rsv_data$sea.level.pressure, lag=3, argvar=list(fun="ps",df=5), arglag=list(fun="ps",degree=5),
+                     group= rsv_data$NAME_1)
+cb.rh <- crossbasis(rsv_data$relative.humidity, lag=3, argvar=list(fun="ps",df=5), arglag=list(fun="ps",degree=5),
+                     group= rsv_data$NAME_1)
+cb.tavg <- crossbasis(rsv_data$TAVG, lag=3, argvar=list(fun="ps",df=5), arglag=list(fun="ps",degree=5),
+                     group= rsv_data$NAME_1)
+cb.ws <- crossbasis(rsv_data$wind.speed, lag=3, argvar=list(fun="ps",df=5), arglag=list(fun="ps",degree=5),
+                     group= rsv_data$NAME_1)
+```
+
+### Exposures
+
+```{r}
+cb.pm25 <- crossbasis(rsv_data$PM25,lag=3,argvar=list(fun="bs",knots=c(15,50),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.no2 <- crossbasis(rsv_data$NO2,lag=3,argvar=list(fun="bs",knots=c(25,50,120),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.co <- crossbasis(rsv_data$CO,lag=3,argvar=list(fun="bs",knots=c(4),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)
+cb.so2 <- crossbasis(rsv_data$SO2,lag=3,argvar=list(fun="bs",knots=c(40),degree=1),arglag=list(fun="poly",degree=3),group=rsv_data$NAME_1)  
+```
+
+### Crude Association (use PM2.5 as an example to illustrate)
+
+```{r}
+crude_pm25_model <- gam(Cases~cb.pm25+s(tscluster,bs="re")+ # ts-cluster
+                          s(week,by=Year,k=30)+ # temporal trend
+                          s(NAME_1,bs="mrf",k=40,xt=list(nb=adj_list)), # spatial variation
+                        family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.pm25.50 <- crosspred(cb.pm25,crude_pm25_model,cen=50,cumul=TRUE,by=1)
+```
+
+### Univariate Association (use PM2.5 as an example to illustrate)
+
+```{r}
+univariate_pm25_model <- gam(Cases~cb.pm25+s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf",k=40,xt=list(nb=adj_list))+
+                               s(cb.rh)+s(cb.sp)+s(cb.tavg)+s(cb.ws), # covariates
+                             family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.pm25.50 <- crosspred(cb.pm25,univariate_pm25_model,cen=50,cumul=TRUE,by=1)
+```
+
+### Multivariate Association (use PM2.5 as an example to illustrate)
+
+```{r}
+multivariate_model <- gam(Cases~cb.pm25+cb.so2+cb.co+cb.no2+ # exposures
+                                 s(tscluster,bs="re")+s(week,by=Year,k=30)+s(NAME_1,bs="mrf",k=40,xt=list(nb=adj_list))+
+                                 s(cb.rh)+s(cb.sp)+s(cb.tavg)+s(cb.ws),
+                             family=quasipoisson(),data=rsv_data,method='REML',select=TRUE)
+pred.pm25.50 <- crosspred(cb.pm25,multivariate_model,cen=50,cumul=TRUE,by=1)
+```
+
