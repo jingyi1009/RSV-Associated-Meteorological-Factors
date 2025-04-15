@@ -1,0 +1,89 @@
+---
+title: "Spatio-Temporal Analysis"
+output: html_document
+date: "2025-04-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sf)
+library(sp)
+library(stats)
+library(ggcorrplot)
+library(rstatix)
+```
+
+## Load dataset
+
+```{r}
+geo_location <- read.csv("../Data/lon_lat.csv")
+colnames(geo_location)[1] <- "NAME_1"
+Japan.shapefile <- st_read('../Data/Japan_shp/JPN_adm1.shp')
+Japan.shapefile <- sp::merge(Japan.shapefile,geo_location,by="NAME_1",duplicateGeoms = TRUE)
+Japan.shapefile <- as(Japan.shapefile, "Spatial")
+rsv_data <- read.csv("../Data/full data.csv")
+rsv_data <- rsv_data[,-1]
+```
+## Spatial Autocorrelations
+
+### construct spatial neighbours
+
+```{r}
+# graph-based neighbours
+coords <- coordinates(Japan.shapefile)
+nb_tri <- coords %>% tri2nb()
+W <- nb_tri %>%
+    nb2listw(style="B", zero.policy=TRUE) 
+```
+
+### calculate annual infection numbers
+
+```{r}
+Year2013 <- rsv_data[rsv_data$Year==2013,c("NAME_1","Cases","Date")] %>% pivot_wider(names_from = NAME_1, values_from = Cases)
+Annual_13 <- t(t(colSums(Year2013[,2:48],na.rm = TRUE)))
+Annual_13 <- cbind(rownames(Annual_13),Annual_13) %>% as.data.frame()
+colnames(Annual_13) <- c("NAME_1","Cases13")
+Annual_13$Cases13 <- as.numeric(Annual_13$Cases13)
+```
+
+### calculate Moran's I 
+
+```{r}
+case2013_dat <- sp::merge(Japan.shapefile,Annual_13,by="NAME_1",duplicateGeoms = TRUE)
+```
+
+```{r}
+Moran_result_13 <- moran.test(case2013_dat$Cases13,W, alternative="greater")
+```
+
+## Temporal Trends
+
+```{r}
+ts_data_Japan <- rsv_data %>% group_by(Date) %>% summarise(Cases=sum(Cases))
+ts_data_Japan <- ts(ts_data_Japan$Cases,start = c(2013,1),end = c(2020,1),frequency = 52)
+```
+
+```{r}
+fit <- stl(ts_data_Japan,s.window = "period")
+plot(fit, col = "coral3",set.pars = list(mar = c(0, 6, 0, 6), oma = c(6, 0, 4, 0),
+                     tck = -0.01, mfrow = c(4, 1),xaxt = "n"))
+axis(side=1,pos=-2660,at = c(2013.000,2014.000,2015.000,2016.000,2017.000,2018.000,2019.000,2020.000),
+     labels = c("2013-Jan","2014-Jan","2015-Jan","2016-Jan","2017-Jan","2018-Jan","2019-Jan","2019-Dec"),
+     cex.axis = 1)
+title(paste0("STL Decomposition of Weekly RSV Cases in Japan"))
+```
+
+## Correlations
+
+```{r}
+rsv_data_corr <- rsv_data[,c(4:5,7:12,26,21,23:25,27)]
+colnames(rsv_data_corr) <- c("Relative Humidity","Sea Level Pressure","Visibility","Wind Speed","Precipitation","Average Temperature",
+                             "Maximum Temperature","Minimum Temperature","Temperature Range","PM2.5","NO2","SO2","CO","RSV Cases")
+corr_matrix <- cor(rsv_data_corr)
+cor.mat2 <- rsv_data_corr %>%  cor_mat(method = "spearman")
+cor.lower.tri2 <- cor.mat2 %>%
+  cor_reorder() %>%
+  pull_lower_triangle()
+corr_p <- cor.lower.tri2 %>% cor_plot(method = "circle",label = TRUE)
+```
+
