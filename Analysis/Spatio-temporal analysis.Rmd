@@ -5,7 +5,7 @@ date: "2025-04-15"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE，warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
 library(sf)
 library(sp)
 library(stats)
@@ -26,7 +26,7 @@ rsv_data <- rsv_data[,-1]
 ```
 ## Spatial Autocorrelations
 
-### construct spatial neighbours
+### Construct Spatial Neighbours
 
 ```{r}
 # graph-based neighbours
@@ -36,7 +36,7 @@ W <- nb_tri %>%
     nb2listw(style="B", zero.policy=TRUE) 
 ```
 
-### calculate annual infection numbers
+### Calculate Annual Infections
 
 ```{r}
 Year2013 <- rsv_data[rsv_data$Year==2013,c("NAME_1","Cases","Date")] %>% pivot_wider(names_from = NAME_1, values_from = Cases)
@@ -46,7 +46,7 @@ colnames(Annual_13) <- c("NAME_1","Cases13")
 Annual_13$Cases13 <- as.numeric(Annual_13$Cases13)
 ```
 
-### calculate Moran's I 
+### Calculate Moran's I 
 
 ```{r}
 case2013_dat <- sp::merge(Japan.shapefile,Annual_13,by="NAME_1",duplicateGeoms = TRUE)
