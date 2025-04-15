@@ -99,7 +99,7 @@ pred <- predict(train_model, data = test_X, gp_coords_pred = coords_test,
                 predict_cov_mat =FALSE)
 ```
 
-### Visualization
+### Shap Values and Visualization
 
 ```{r}
 shap.plot.summary.wrap1(train_model, X = test_X,top_n=15) 
