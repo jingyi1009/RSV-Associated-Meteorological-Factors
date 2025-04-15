@@ -1,0 +1,72 @@
+---
+title: "Subgroup Analysis"
+output: html_document
+date: "2025-04-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+## Load Dataset
+
+```{r}
+geo_location <- read.csv("../Data/lon_lat.csv")
+colnames(geo_location)[1] <- "NAME_1"
+Japan.shapefile <- st_read('../Data/Japan_shp/JPN_adm1.shp')
+Japan.shapefile <- sp::merge(Japan.shapefile,geo_location,by="NAME_1",duplicateGeoms = TRUE)
+Japan.shapefile <- as(Japan.shapefile, "Spatial")
+rsv_data <- read.csv("../Data/full data.csv")
+rsv_data <- rsv_data[,-1]
+rsv_data$tscluster <- factor(rsv_data$tscluster)
+rsv_data$NAME_1 <- factor(rsv_data$NAME_1)
+```
+
+## Stratify by Latitude
+
+```{r}
+Latitude_under30 <- rsv_data[rsv_data$Latitude<=30,]
+Latitude_30_35 <- rsv_data[rsv_data$Latitude>30&rsv_data$Latitude<=35,]
+Latitude_over_35 <- rsv_data[rsv_data$Latitude>35,]
+```
+
+## Create Exposures
+
+```{r}
+cb.tavg.piecewise_under30 <- crossbasis(Latitude_under30$TAVG, lag=3, argvar=list(fun="bs",knots=c(20),degree=1),
+                                        arglag=list(fun="poly",degree=3),group=Latitude_under30$Prefecture)
+cb.tavg.piecewise_30_35 <- crossbasis(Latitude_30_35$TAVG, lag=3, argvar=list(fun="bs",knots=c(10,20),degree=1),
+                                       arglag=list(fun="poly",degree=3),group=Latitude_30_35$Prefecture)
+cb.tavg.piecewise_over_35 <- crossbasis(Latitude_over_35$TAVG, lag=3, argvar=list(fun="bs",knots=c(10,20),degree=1),
+                                       arglag=list(fun="poly",degree=3),group=Latitude_over_35$Prefecture)
+```
+
+## Create Covariates
+
+```{r}
+cb.vis_under30 <- crossbasis(Latitude_under30$visibility,lag=3,argvar=list(fun="ps",degree=5),arglag=list(fun="ps",degree=5),group=Latitude_under30$Prefecture)  
+cb.sp_under30 <- crossbasis(Latitude_under30$sea.level.pressure,lag=3, argvar=list(fun="ps",degree=5), arglag=list(fun="ps",degree=5),group=Latitude_under30$Prefecture)
+
+cb.vis_30_35 <- crossbasis(Latitude_30_35$visibility,lag=3,argvar=list(fun="ps",degree=5),arglag=list(fun="ps",degree=5),group=Latitude_30_35$Prefecture)  
+cb.sp_30_35 <- crossbasis(Latitude_30_35$sea.level.pressure,lag=3, argvar=list(fun="ps",degree=5), arglag=list(fun="ps",degree=5),group=Latitude_30_35$Prefecture)
+
+cb.vis_over_35 <- crossbasis(Latitude_over_35$visibility,lag=3,argvar=list(fun="ps",degree=5),arglag=list(fun="ps",degree=5),group=Latitude_over_35$Prefecture)  
+cb.sp_over_35 <- crossbasis(Latitude_over_35$sea.level.pressure,lag=3,argvar=list(fun="ps",degree=5), arglag=list(fun="ps",degree=5),group=Latitude_over_35$Prefecture)
+```
+
+## Build Univariate Models
+
+```{r}
+Uni_TAVG_under30 <- gam(Cases~cb.tavg.piecewise_under30+s(cb.vis_under30)+s(cb.sp_under30)+s(week,by=Year,k=20),
+                        family=quasipoisson(),data=Latitude_under30,method='REML',select=TRUE)
+```
+
+```{r}
+Uni_TAVG_30_35 <- gam(Cases~cb.tavg.piecewise_30_35+s(cb.vis_30_35)+s(cb.sp_30_35)+ s(tscluster,bs="re")+s(week,by=Year,k=20)+s(Latitude)+s(Longitude),
+                   family=quasipoisson(),data=Latitude_30_35,method='REML',select=TRUE)
+```
+
+```{r}
+Uni_TAVG_over_35 <- gam(Cases~cb.tavg.piecewise_over_35+s(cb.vis_over_35)+s(cb.sp_over_35)+ s(tscluster,bs="re")+s(week,by=Year,k=20)+s(Latitude)+s(Longitude),
+                   family=quasipoisson(),data=Latitude_over_35,method='REML',select=TRUE)
+```
