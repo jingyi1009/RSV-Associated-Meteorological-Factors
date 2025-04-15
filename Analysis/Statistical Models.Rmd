@@ -5,7 +5,7 @@ date: "2025-04-15"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE，warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
 library(dlnm)
 library(splines)
 library(sp)
@@ -13,7 +13,7 @@ library(spdep)
 library(sf)
 ```
 
-## Load dataset
+## Load Dataset
 
 ```{r}
 geo_location <- read.csv("../Data/lon_lat.csv")
@@ -26,7 +26,7 @@ rsv_data <- rsv_data[,-1]
 rsv_data$tscluster <- factor(rsv_data$tscluster)
 rsv_data$NAME_1 <- factor(rsv_data$NAME_1)
 ```
-## Construct adjacency matrix
+## Construct Adjacency Matrix
 
 ```{r}
 adj_list <- Japan.shapefile %>% st_as_sf() %>% st_touches()
