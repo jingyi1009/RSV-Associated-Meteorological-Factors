@@ -74,7 +74,7 @@ univariate_tavg_model <- gam(Cases~cb.tavg.piecewise+s(tscluster,bs="re")+s(week
 pred.tavg.25 <- crosspred(cb.tavg.piecewise,univariate_tavg_model,cen=25,cumul=TRUE,by=1)
 ```
 
-### Multivariate Association
+### Multivariate Association (use average temperature as an example to illustrate)
 
 ```{r}
 multivariate_tavg_model <- gam(Cases~cb.tavg.piecewise+cb.rh.piecewise+cb.ws.piecewise+cb.p+cb.trange+cb.hd+cb.cd+# exposures
